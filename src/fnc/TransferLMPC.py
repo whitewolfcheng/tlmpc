@@ -38,7 +38,7 @@ class ControllerTLMPC():
             Solver: solver used in the reformulation of the LMPC as QP
         """
         self.numSS_Points = numSS_Points
-        self.numSR_points=numSR_Points
+        self.numSR_points=numSR_Points  #similar road 即记忆中和当前道路相似的轨迹
         self.numSS_it     = numSS_it
         self.N = N
         self.Qslack = Qslack
@@ -120,30 +120,68 @@ class ControllerTLMPC():
         Succ_SS_PointSelectedTot = np.empty((n, 0))
         Succ_uSS_PointSelectedTot = np.empty((d, 0))
         Qfun_SelectedTot = np.empty((0))
-
-        maxsspoint = np.argmax(TimeSS[0])
+        reallyroadarclen=np.empty(numSR_Points)
+        maxsspoint =max(TimeSS)
         Mindiff=100.0
         for ii in range(0,maxsspoint-numSR_Points):
+            #剔除长度不够的列
+            jdell=2
+            for jdel in range(2,42):
+                if jdell >= bcur.shape[1] :
+                    break
+                if TimeSS[jdel]<ii+numSR_Points-1:
+                    bcur=np.delete(bcur,jdell,axis=1)
+                    arclens=np.delete(arclens,jdell,axis=1)
+                    jdell=jdell-1
+
+                jdell=jdell+1
             #记忆中的numSR_Points个点的曲率
-            curb=bcur[ii:ii+numSR_Points,:]
+            curb=bcur[ii:ii+numSR_Points,2:]
             #当前路径中心线的numSR_Points个点的对应s值及曲率
-            nowarclen=arclens[ii:ii+numSR_Points,:]
+            nowarclen=arclens[ii:ii+numSR_Points,2:]
+            if curb.shape[1]==0: #如果曲率是空集，则跳出循环
+                break
             nowxs=self.zVector[4]  #修正s值
+          #  print ii
+           # print 'qiguai'
+          #  print nowarclen.shape
+
             diffarclens=nowxs-nowarclen[9,:]
-            nowcarclens=nowarclen+diffarclens
-            nowcur = np.empty((nowarclen.shape[0], nowarclen[1]))
+            nowarclens=nowarclen+diffarclens
+         #   print 'nowcarclens'
+         #   print self.zVector[4]
+        #    print nowarclen[numSR_Points-1,:]
+        #    print nowarclens[numSR_Points-1,:]
+
+            #利用弧长求曲率
+            nowcur = np.empty((nowarclen.shape[0], nowarclen.shape[1]))
             for i in range(0,nowarclen.shape[0]):
-                for j in range(0, nowarclen.shape[1]):
-                    nowcur[i,j] = Curvature(nowcarclens[i,j], PointAndTangent)
+                for j in range(2, nowarclen.shape[1]):
+                    if nowarclens[i,j]<0 :
+                        nowarclens[i, j]=nowarclens[i,j]+map.TrackLength
+                    nowcur[i,j] = Curvature(nowarclens[i,j], PointAndTangent)
+            #现实路径与过往轨迹的曲率差的2范数
             diffcur=nowcur-curb
-            diffcurnorm = la.norm(diffcur, 1, axis=0)
+            diffcurnorm = la.norm(diffcur, 2, axis=0)
             MinJ = np.argmin(diffcurnorm)
-            if Mindiff>=diffcurnorm[MinJ]:
+
+            if Mindiff>diffcurnorm[MinJ]:
                 MinJJ=MinJ
                 MinII=ii
                 Mindiff=diffcurnorm[MinJ]
-        similarroadpoint=SS[MinII:MinII+numSR_Points,:, MinJJ]  #最相似路段的轨迹点
+
+        # 相似过往轨迹
+        similarroadpoint=SS[MinII:MinII+numSR_Points,:, MinJJ+2]
         self.TSR_PointSelectedTot = similarroadpoint
+        #现实路径
+        print self.arclens.shape
+        print self.SS.shape
+    #    rrdiffcur=self.zVector[4]-self.arclens[MinII+9,MinJJ+2]
+     #   reallyroadarclen = (self.arclens[MinII:MinII+numSR_Points,MinJJ+2 ]+rrdiffcur).reshape((numSR_Points,1))
+        reallyroadarclen = (self.arclens[MinII:MinII + numSR_Points, MinJJ + 2] ).reshape((numSR_Points, 1))
+        self.reallyroadPoint=hstack(( hstack((np.zeros((reallyroadarclen.shape[0],4)), reallyroadarclen  )), np.zeros((reallyroadarclen.shape[0],1))  ))#实际道路为只有s量，其余各量为0的点
+    #
+
             
 
 
@@ -152,42 +190,48 @@ class ControllerTLMPC():
 
 
 
-    def addTrajectory(self, ClosedLoopData):
+    def addTrajectory(self, ClosedLoopData,LMPController,Laps):
         """update iteration index and construct SS, uSS and Qfun
         Arguments:
             ClosedLoopData: ClosedLoopData object
         """
         it = self.it
-
-        self.TimeSS[it] = ClosedLoopData.SimTime
-        self.LapCounter[it] = ClosedLoopData.SimTime
-        self.SS[0:(self.TimeSS[it] + 1), :, it] = ClosedLoopData.x[0:(self.TimeSS[it] + 1), :]
-        self.SS_glob[0:(self.TimeSS[it] + 1), :, it] = ClosedLoopData.x_glob[0:(self.TimeSS[it] + 1), :]
-        self.uSS[0:self.TimeSS[it], :, it] = ClosedLoopData.u[0:(self.TimeSS[it]), :]
-
-        for i in np.arange(1, self.SS_glob.shape[0]-2):
-            x = self.SS_glob[i-1:i + 2, 4, it]
-            y = self.SS_glob[i-1:i + 2, 5, it]
-            cur=PJcurvature(x,y)
+      #  print ClosedLoopData.SimTimeTot
+        for it in range(2,Laps):
+            self.TimeSS[it] = ClosedLoopData.SimTimeTot[it]  #过终点线仍然+1
+            self.LapCounter[it] = ClosedLoopData.SimTimeTot[it] #一圈的仿真时间（不+1）
+            self.SS[0:(self.TimeSS[it] + 1), :, it] = LMPController.SS[0:(self.TimeSS[it] + 1), :,it]
+            self.SS_glob[0:(self.TimeSS[it] + 1), :, it] = LMPController.SS_glob[0:(self.TimeSS[it] + 1), :,it]
+            self.uSS[0:self.TimeSS[it], :, it] = LMPController.uSS[0:(self.TimeSS[it]), :,it]
+          #  print self.SS_glob[0:(self.TimeSS[it] + 1), 4, it]
+           # print self.SS_glob[0:3, 4, it]
+            for i in np.arange(1, self.SS_glob.shape[0]-2):
+                if self.SS_glob[i + 2, 4, it]==10000:
+                    break
+                x = self.SS_glob[i-1:i + 2, 4, it]
+                y = self.SS_glob[i-1:i + 2, 5, it]
+              #  print x
+             #   print y
+                cur=PJcurvature(x,y)
             #求曲率
-            self.bcur[i, it] = cur
+                self.bcur[i, it] = cur
             #求弧长
-            bcur1=cur
-            if i==1:
-                self.bcur[0,it]=self.bcur[1,it]
-                bcur0=bcur1
-            else :
-                bcur0=self.bcur[i-1,it]
-            arclen=Arclength(bcur1,bcur0,x[1],y[1],x[0],y[0])
-            self.arclen[i,it]=arclen
-            self.arclens[i,it]=self.arclens[i-1,it]+self.arclen[i,it]
+                bcur1=cur
+                if i==1:
+                    self.bcur[0,it]=self.bcur[1,it]
+                    bcur0=bcur1
+                else :
+                    bcur0=self.bcur[i-1,it]
+                arclen=Arclength(bcur1,bcur0,x[1],y[1],x[0],y[0])
+                self.arclen[i,it]=arclen
+                self.arclens[i,it]=self.arclens[i-1,it]+self.arclen[i,it]
 
        # self.bcur[-1,it]=self.bcur[-2,it]
-        if self.it == 0:
-            self.LinPoints = self.SS[1:self.N + 2, :, it]
-            self.LinInput = self.uSS[1:self.N + 1, :, it]
+            if self.it == 0:
+                self.LinPoints = self.SS[1:self.N + 2, :, it]
+                self.LinInput = self.uSS[1:self.N + 1, :, it]
 
-        self.it = self.it + 1
+            self.it = self.it + 1
 
     def addPoint(self, x, u,xglob):
         """at iteration j add the current point to SS, uSS and Qfun of the previous iteration

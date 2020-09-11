@@ -28,7 +28,7 @@
 import sys
 sys.path.append('fnc')
 from SysModel import Simulator, PID
-from Classes import ClosedLoopData, LMPCprediction, TLMPCprediction
+from Classes import ClosedLoopData, LMPCprediction, TLMPCprediction,ClosedLoopDataLMPC
 from PathFollowingLTVMPC import PathFollowingLTV_MPC
 from PathFollowingLTIMPC import PathFollowingLTI_MPC
 from Track import Map, unityTestChangeOfCoordinates
@@ -39,7 +39,7 @@ from plot import plotTrajectory, plotClosedLoopLMPC, animation_xy, animation_sta
 import numpy as np
 import matplotlib.pyplot as plt
 import pdb
-import pickle
+import  pickle
 from testsysmodel import testSimulator
 
 # ======================================================================================================================
@@ -175,7 +175,7 @@ print "===== TV-MPC terminated"
 # ==============================  LMPC w\ LOCAL LINEAR REGRESSION ======================================================
 # ======================================================================================================================
 print "Starting LMPC"
-ClosedLoopLMPC = ClosedLoopData(dt, TimeLMPC, v0)
+ClosedLoopLMPC = ClosedLoopDataLMPC(dt, TimeLMPC, v0,Laps)
 LMPCOpenLoopData = LMPCprediction(N, n, d, TimeLMPC, numSS_Points, Laps) #生成所需大小的初始零矩阵
 LMPCSimulator = Simulator(map, 1, 1)
 
@@ -194,7 +194,7 @@ if RunLMPC == 1:
         ClosedLoopLMPC.updateInitialConditions(x0, x0_glob)
         LMPCSimulator.Sim(ClosedLoopLMPC, LMPController, LMPCOpenLoopData)
         LMPController.addTrajectory(ClosedLoopLMPC)
-
+        ClosedLoopLMPC.SimTimeTot[it]=ClosedLoopLMPC.SimTime
         if LMPController.feasible == 0:
             break
         else:
@@ -230,7 +230,7 @@ TLMPCSimulator = testSimulator(map, 1, 0,1)
 TLMPController = ControllerTLMPC(numSS_Points, numSR_Points, numSS_it, N, Qslack, Qlane, Q_LMPC, R_LMPC, dR_LMPC, dt, map, Laps, TimeLMPC, LMPC_Solver, inputConstr)
 #TLMPController.addTrajectory(ClosedLoopDataPID)
 #TLMPController.addTrajectory(ClosedLoopDataLTV_MPC)
-TLMPController.addTrajectory(ClosedLoopLMPC)
+TLMPController.addTrajectory(ClosedLoopLMPC,LMPController,Laps)
 x0           = np.zeros((1,n))
 x0_glob      = np.zeros((1,n))
 x0[0,:]      = ClosedLoopTLMPC.x[0,:]
@@ -276,7 +276,7 @@ if plotFlagLMPC == 1:
     plotClosedLoopLMPC(LMPController, map)
 
 if animation_xyFlag == 1:
-   # animation_xy(map, LMPCOpenLoopData, LMPController, 5)
+    #animation_xy(map, LMPCOpenLoopData, LMPController, 3)
     saveGif_xyResults(map, LMPCOpenLoopData, LMPController,40 )
     plt.show()
 if animation_stateFlag == 1:

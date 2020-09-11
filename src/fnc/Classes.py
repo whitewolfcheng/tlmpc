@@ -2,7 +2,7 @@
 
 import numpy as np
 
-class ClosedLoopData():
+class ClosedLoopData(object):
     """Object collecting closed loop data points
     Attributes:
         updateInitialConditions: function which updates initial conditions and clear the memory
@@ -23,6 +23,9 @@ class ClosedLoopData():
         self.x[0,0] = v0
         self.x_glob[0,0] = v0
 
+
+
+
     def updateInitialConditions(self, x, x_glob):
         """Clears memory and resets initial condition
         x: initial condition is the curvilinear reference frame
@@ -33,6 +36,11 @@ class ClosedLoopData():
 
         self.x[1:, :] = 0*self.x[1:, :]
         self.x_glob[1:, :] = 0*self.x_glob[1:, :]
+
+class ClosedLoopDataLMPC(ClosedLoopData):
+    def __init__(self,dt, Time, v0,Laps):
+        super(ClosedLoopDataLMPC,self).__init__(dt,Time,v0)
+        self.SimTimeTot=np.zeros(Laps)
 
 
 class LMPCprediction():
@@ -52,6 +60,7 @@ class LMPCprediction():
         self.SSused   = np.zeros((n , numSS_Points, TimeLMPC, Laps))
         self.Qfunused = np.zeros((numSS_Points, TimeLMPC, Laps))     #在第numss—points个点时，状态（输入）变量里的第timelmpc项，共有laps圈轨迹
 
+
 class  TLMPCprediction():
     """Object collecting the predictions and SS at eath time step
     """
@@ -60,7 +69,7 @@ class  TLMPCprediction():
         Initialization:
             N: horizon length
             n, d: input and state dimensions
-            TimeTLMPC: maximum simulation time length [s] 最大的仿真时间长度（状态变量的个数或输入变量的个数）
+            TimeTLMPC: maximum simulation time length [s] 最大的仿真时间长度
             num_TSSpoints: number used to buils SS at each time step 每一步开始时ss集的点个数num_sspoints
         """
         self.PredictedStates = np.zeros((N+1, n, TimeTLMPC, TLaps))
@@ -68,7 +77,8 @@ class  TLMPCprediction():
 
 
         self.Pfunused = np.zeros((numTSS_Points, TimeTLMPC, TLaps))     #在第numss—points个点时，状态（输入）变量里的第timelmpc项，共有laps圈轨迹
-        # 相似路径、被采纳的相似轨迹
+        # 相似路径、被采纳的相似轨迹、实际轨迹
         self.TSRused = np.zeros((n, numTSR_Points, TimeTLMPC, TLaps))
      #   self.TSRSused = np.zeros((n, numTSS_Points, TimeTLMPC, TLaps))
         self.TSSused = np.zeros((n, numTSS_Points, TimeTLMPC, TLaps))
+        self.RRused=np.zeros((n,numTSR_Points,TimeTLMPC,TLaps))
