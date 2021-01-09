@@ -34,8 +34,8 @@ class Simulator():
 
         SimulationTime = 0
         for i in range(0, int(ClosedLoopData.Points)):  #在[0,points)中遍历， self.Points = int(Time / dt)，表示仿真中的点个数
+      #  for i in range(0, 30):
             Controller.solve(x[i, :])                   #x中第一个量为预测个数，第二个量为6个状态变量
-
             u[i, :] = Controller.uPred[0,:]
            # print '小车输入'
           #  print u[i,:]
@@ -56,7 +56,9 @@ class Simulator():
           #  print '小车状态更新'
          #   print x[i, :]
             x[i + 1, :], x_glob[i + 1, :] = _DynModel(x[i, :], x_glob[i, :], u[i, :], np, ClosedLoopData.dt, self.map.PointAndTangent)
-          #  print x[i+1,:]
+            if x[i+1,5]>=self.map.halfWidth:
+                print '超过边界',x[i+1,5],self.map.halfWidth
+           # print '当前位置',x[i + 1, 4],'目标位置',self.map.TrackLength
             SimulationTime = i + 1
 
             # print(getAngle(x[i+1,4], x[i+1,3], self.map.PointAndTangent))
@@ -74,11 +76,12 @@ class Simulator():
 
             if self.flagLMPC == 1:
                 Controller.addPoint(x[i, :], u[i, :],x_glob[i,:])
-            if self.flagTLMPC == 1:
-                Controller.addPoint(x[i, :], u[i, :],x_glob[i,:])
+ #           if self.flagTLMPC == 1:
+   #             Controller.addPoint(x[i, :], u[i, :],x_glob[i,:])
 
             if (self.laps == 1) and (int(np.floor(x[i+1, 4] / (self.map.TrackLength))))>0:
                 print "Simulation terminated: Lap completed"
+                print "消耗时间：", i * 0.1, "s"
                 break
 
         ClosedLoopData.SimTime = SimulationTime
@@ -122,12 +125,12 @@ def _DynModel(x, x_glob, u, np, dt, PointAndTangent):
 
     # Vehicle Parameters
     m  = 1.98
-    lf = 0.125
+    lf = 0.125 #质心距前后轴的距离
     lr = 0.125
-    Iz = 0.024
-    Df = 0.8 * m * 9.81 / 2.0
-    Cf = 1.25
-    Bf = 1.0
+    Iz = 0.024 #绕z轴的转动惯量
+    Df = 0.8 * m * 9.81 / 2.0 #峰值因子
+    Cf = 1.25 #形状因子
+    Bf = 1.0 #刚度因子
     Dr = 0.8 * m * 9.81 / 2.0
     Cr = 1.25
     Br = 1.0

@@ -147,11 +147,13 @@ class Map():
         # wrap s along the track
         while (s > self.TrackLength):
             s = s - self.TrackLength
-
+        if s<0:
+            s=s+self.TrackLength
         # Compute the segment in which system is evolving
         PointAndTangent = self.PointAndTangent
 
         index = np.all([[s >= PointAndTangent[:, 3]], [s < PointAndTangent[:, 3] + PointAndTangent[:, 4]]], axis=0)
+
         i = int(np.where(np.squeeze(index))[0])
 
         if PointAndTangent[i, 5] == 0.0:  # If segment is a straight line

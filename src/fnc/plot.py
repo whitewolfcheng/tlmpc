@@ -15,22 +15,16 @@ def plotTrajectory(map, x, x_glob, u):
         Points1[i, :] = map.getGlobalPosition(i * 0.1, map.halfWidth)
         Points2[i, :] = map.getGlobalPosition(i * 0.1, -map.halfWidth)
         Points0[i, :] = map.getGlobalPosition(i * 0.1, 0)
-
-    plt.figure()
-    plt.plot(map.PointAndTangent[:, 0], map.PointAndTangent[:, 1], 'o')
-    plt.plot(Points0[:, 0], Points0[:, 1], '--')
-    plt.plot(Points1[:, 0], Points1[:, 1], '-b')
-    plt.plot(Points2[:, 0], Points2[:, 1], '-b')
-    plt.show()
-
-    plt.figure()
+    plt.figure('SS0_xy')
     plt.plot(map.PointAndTangent[:, 0], map.PointAndTangent[:, 1], 'o')
     plt.plot(Points0[:, 0], Points0[:, 1], '--')
     plt.plot(Points1[:, 0], Points1[:, 1], '-b')
     plt.plot(Points2[:, 0], Points2[:, 1], '-b')
     plt.plot(x_glob[:, 4], x_glob[:, 5], '-r')
-
-    plt.figure()
+    #plt.savefig("C:/Users/EE506/Desktop/fig/lab/SS0_xy.svg") #svg格式能在Visio中处理并变成emf（visio）专用格式
+    plt.savefig("C:/Users/EE506/Desktop/fig/lab/SS0_xy.png")
+    plt.show()
+    plt.figure('SS0_state')
     plt.subplot(711)
     plt.plot(x[:, 4], x[:, 0], '-o')
     plt.ylabel('vx')
@@ -52,7 +46,12 @@ def plotTrajectory(map, x, x_glob, u):
     plt.subplot(717)
     plt.plot(x[0:-1, 4], u[:, 1], '-o')
     plt.ylabel('acc')
+    plt.show()
 
+
+
+
+#生成所有圈数都叠在一块的LMPC图片
 def plotClosedLoopLMPC(LMPController, map):
     SS_glob = LMPController.SS_glob
     LapCounter  = LMPController.LapCounter
@@ -77,7 +76,7 @@ def plotClosedLoopLMPC(LMPController, map):
 
     for i in range(2, TotNumberIt):
         plt.plot(SS_glob[0:LapCounter[i], 4, i], SS_glob[0:LapCounter[i], 5, i], '-r')
-
+    plt.savefig("C:/Users/EE506/Desktop/fig/lab/lmpc_xy.png")
     plt.figure(2)
     plt.subplot(711)
     for i in range(2, TotNumberIt):
@@ -486,9 +485,10 @@ def Save_statesAnimation(map, LMPCOpenLoopData, LMPController, it):
 
     anim.save('ClosedLoopStates.mp4', dpi=80, writer='imagemagick')
 
-def TLMPC_xyResults(map, TLMPCOpenLoopData, TLMPController,it):
+def TLMPC_xyResults(map, TLMPCOpenLoopData, TLMPController):
    # SS_glob = LMPController.SS_glob
     LapCounter = TLMPController.LapCounter
+    TransTime= TLMPController.TransTime+1
   #  SS = LMPController.SS
   #  uSS = LMPController.uSS
 #绘制道路
@@ -509,83 +509,78 @@ def TLMPC_xyResults(map, TLMPCOpenLoopData, TLMPController,it):
     plt.plot(Points0[:, 0], Points0[:, 1], '--')
     plt.plot(Points1[:, 0], Points1[:, 1], '-b')
     plt.plot(Points2[:, 0], Points2[:, 1], '-b')
-#绘制运动轨迹
-    #黑色的闭环轨迹
-   # plt.plot(SS_glob[0:LapCounter[it], 4, it], SS_glob[0:LapCounter[it], 5, it], '-ok', label="Closed-loop trajectory", markersize=1,zorder=-1)
+#绘制运动轨迹bel="Closed-loop trajectory", markersize=1,zorder=-1)
 
    #绘制静态sr集
 
-    numSR_Points = TLMPController.numSR_points
-    SRpoints_x = np.empty(numSR_Points);SRpoints_y =  np.empty(numSR_Points)
-    RRpoints_x = np.empty(numSR_Points);RRpoints_y = np.empty(numSR_Points)
-
-    for j in range(0, numSR_Points):
+    numSR_Points = TLMPController.numSR_points  #总点数
+    #黑色的闭环轨迹
+   # plt.plot(SS_glob[0:LapCounter[it], 4, it], SS_glob[0:LapCounter[it], 5, it], '-ok', la
+    SRpoints_x = np.empty((numSR_Points,TransTime));SRpoints_y =  np.empty((numSR_Points,TransTime)) #相似路径
+    RRpoints_x = np.empty((numSR_Points,TransTime));RRpoints_y = np.empty((numSR_Points,TransTime))   #实际道路中心线
+  #  SRpoints1_x = np.empty(numSR_Points);SRpoints1_y = np.empty(numSR_Points)  #相似路径虚拟边界1
+   # SRpoints2_x = np.empty(numSR_Point                                          s);SRpoints2_y =  np.empty(numSR_Points)  #相似路径虚拟边界2
+    for i in range(0,TransTime):
+      for j in range(0, numSR_Points):
     #     print 'ceshi'
-         if TLMPCOpenLoopData.RRused[4, j, 0, it]<0:
-             TLMPCOpenLoopData.RRused[4,j,0,it]+=map.TrackLength
-         SRpoints_x[j], SRpoints_y[j] = map.getGlobalPosition(TLMPCOpenLoopData.TSRused[4, j, 0, it],
-                                                               TLMPCOpenLoopData.TSRused[5, j, 0, it])
-         RRpoints_x[j], RRpoints_y[j] = map.getGlobalPosition(TLMPCOpenLoopData.RRused[4, j, 0, it],
-                                                              TLMPCOpenLoopData.RRused[5, j, 0, it])
+         if TLMPCOpenLoopData.RRused[4, j, i]<0:
+             TLMPCOpenLoopData.RRused[4,j,i]+=map.TrackLength
+        #选出的相似路径
+         SRpoints_x[j,i], SRpoints_y[j,i] = map.getGlobalPosition(TLMPCOpenLoopData.TSRused[4, j, i],
+                                                               TLMPCOpenLoopData.TSRused[5, j, i])
+   #     #相似路径的虚拟路径边界
+   #      SRpoints1_x[j], SRpoints1_y[j] = map.getGlobalPosition(TLMPCOpenLoopData.TSRused[4, j, 0, it],
+         #                                            TLMPCOpenLoopData.TSRused[5, j, 0, it]+map.halfWidth)
+     #    SRpoints2_x[j], SRpoints2_y[j] = map.getGlobalPosition(TLMPCOpenLoopData.TSRused[4, j, 0, it],
+        #                                                       TLMPCOpenLoopData.TSRused[5, j, 0, it]-map.halfWidth)
+        #实际路径中心线
+         RRpoints_x[j,i], RRpoints_y[j,i] = map.getGlobalPosition(TLMPCOpenLoopData.RRused[4, j, i],
+                                                              TLMPCOpenLoopData.RRused[5, j, i])
+      if i==0:
+      #   plt.plot(SRpoints_x[:,i], SRpoints_y[:,i],'--r',label="Virtual centerline")
+         plt.plot(RRpoints_x[-1,i], RRpoints_y[-1,i], 'o',color='red',label="current centerline")
+         plt.plot(RRpoints_x[0, i], RRpoints_y[0, i], 'o', color='red')
+      else:
+      #   plt.plot(SRpoints_x[:, i], SRpoints_y[:, i], '--r')
+         plt.plot(RRpoints_x[-1, i], RRpoints_y[-1, i], 'o',color='red')
+    #  if i==2:
+    #      plt.plot(SRpoints_x[:, i], SRpoints_y[:, i], '--r')
 
+      if i==0:
+          transSSTime=TLMPController.transSSTime[i]
+      else:
+          transSSTime = TLMPController.transSSTime[i]-TLMPController.transSSTime[i-1]
 
-    plt.plot(SRpoints_x, SRpoints_y,'-ok')
-    plt.plot(RRpoints_x, RRpoints_y, '-ok')
+      tSSpoints_x = np.empty(transSSTime);
+      tSSpoints_y = np.empty(transSSTime)  # 迁移后的最优轨迹
+      BeforeSSpoints_x = np.empty(transSSTime);
+      BeforeSSpoints_y = np.empty(transSSTime)  # 迁移后的最优轨迹
+      chazhiSSpoints_x = np.empty(transSSTime);
+      chazhiSSpoints_y = np.empty(transSSTime)
+      for j in range(0, transSSTime):
+         if i==0:
+             jj=j
+         else:
+             jj=TLMPController.transSSTime[i-1]+j  #算上之前路径段后j的位置
+         #迁移后的最优轨迹
+         tSSpoints_x[j], tSSpoints_y[j] = map.getGlobalPosition(TLMPController.transSS[jj,4],
+                                                     TLMPController.transSS[jj,5])
+         BeforeSSpoints_x[j], BeforeSSpoints_y[j] = map.getGlobalPosition(TLMPController.BestbeforePoint[jj, 4],
+                                                       TLMPController.BestbeforePoint[jj, 5])
+         chazhiSSpoints_x[j], chazhiSSpoints_y[j] = map.getGlobalPosition(TLMPController.chazhi_PointSelect[jj, 4],
+                                                       TLMPController.chazhi_PointSelect[jj, 5])
+      if i==0:
+        plt.plot(tSSpoints_x, tSSpoints_y, linestyle='-', color='green', label="Transfered Track")
+      #  plt.plot(BeforeSSpoints_x, BeforeSSpoints_y, linestyle='--', color='green', label="Before Track")
+      else:
+        plt.plot(tSSpoints_x, tSSpoints_y, linestyle='-', color='green',)
+    #  if i==2:
+    #    plt.plot(BeforeSSpoints_x, BeforeSSpoints_y, linestyle='--', color='green',)
+   # plt.plot(BeforeSSpoints_x, BeforeSSpoints_y, linestyle='--', color='green', label="Before Track") 此注释为例子
 
-   # ax = plt.axes()
-  #  SSpoints_x = []; SSpoints_y = []
-   # SRpoints_x = [];SRpoints_y = []
-   # xPred = []; yPred = []
-    #SSpoints, = ax.plot(SSpoints_x, SSpoints_y, 'og', label="SS",zorder=0)   #ss集绘制
-   # SRpoints, = ax.plot(SRpoints_x,SRpoints_y, '-yellow', label="SR", zorder=2)  # sR集绘制
-   # line, = ax.plot(xPred, yPred, '-or', label="Predicted Trajectory",zorder=1)  #预测的状态变量绘制
+ #   plt.plot(SRpoints1_x, SRpoints1_y, '--b',label="Virtual boundaries")
+ #   plt.plot(SRpoints2_x, SRpoints2_y, '--b')
 
- #   v = np.array([[ 1.,  1.],
-  #                [ 1., -1.],
-#                  [-1., -1.],
-#                  [-1.,  1.]])
-    #绿色的小车模型
-#    rec = patches.Polygon(v, alpha=0.7,closed=True, fc='w', ec='k',zorder=10)
-#    ax.add_patch(rec)
+  #  plt.plot(chazhiSSpoints_x, chazhiSSpoints_y, '-ob', label="chazhi")
+    plt.legend(loc='best')
 
- #   plt.legend(mode="expand", ncol=3)
-    # plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
-    #             mode="expand", borderaxespad=0, ncol=3)
-
-#    N = TLMPController.N
-#    numSS_Points = TLMPController.numSS_Points
-#    numSR_Points = TLMPController.numSR_Points
-
- #   def update(i):
-       # xPred = np.zeros((N + 1, 1)); yPred = np.zeros((N + 1, 1))
-      #  SSpoints_x = np.zeros((numSS_Points, 1)); SSpoints_y = np.zeros((numSS_Points, 1))
-  #      SRpoints_x = np.zeros((numSR_Points, 1));SRpoints_y = np.zeros((numSR_Points, 1))
-        #预测的状态变量
-       # for j in range(0, N + 1):
-       #     xPred[j, 0], yPred[j, 0] = map.getGlobalPosition(LMPCOpenLoopData.PredictedStates[j, 4, i, it],
-        #                                                     LMPCOpenLoopData.PredictedStates[j, 5, i, it])
-
-      #      if j == 0:
-       #         x = SS_glob[i, 4, it]
-       #         y = SS_glob[i, 5, it]
-        #        psi = SS_glob[i, 3, it]
-        #        l = 0.4;w = 0.2
-          #      car_x = [x + l * np.cos(psi) - w * np.sin(psi), x + l * np.cos(psi) + w * np.sin(psi),
-           #              x - l * np.cos(psi) + w * np.sin(psi), x - l * np.cos(psi) - w * np.sin(psi)]
-           #     car_y = [y + l * np.sin(psi) + w * np.cos(psi), y + l * np.sin(psi) - w * np.cos(psi),
-            #             y - l * np.sin(psi) - w * np.cos(psi), y - l * np.sin(psi) + w * np.cos(psi)]
-        #ss集
-      #  for j in range(0, numSS_Points):
-        #    SSpoints_x[j, 0], SSpoints_y[j, 0] = map.getGlobalPosition(LMPCOpenLoopData.SSused[4, j, i, it],
-         #                                                              LMPCOpenLoopData.SSused[5, j, i, it])
- #       for j in range(0, numSR_Points):
-  #          SRpoints_x[j, 0], SRpoints_y[j, 0] = map.getGlobalPosition(TLMPCOpenLoopData.TSRused[4, j, i, it],
-                            #                                           TLMPCOpenLoopData.TSRused[5, j, i, it])
- #       SRpoints.set_data(SRpoints_x, SRpoints_y)
-        #SSpoints.set_data(SSpoints_x, SSpoints_y)
-       # line.set_data(xPred, yPred)
-        #rec.set_xy(np.array([car_x, car_y]).T)
-
- #   anim = FuncAnimation(fig, update, frames=np.arange(0, int(TLMPController.LapCounter[it])), interval=100)
-
-  #  anim.save('ClosedLoop.mp4', dpi=80, writer='imagemagick')

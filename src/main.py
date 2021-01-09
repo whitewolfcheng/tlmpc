@@ -28,19 +28,21 @@
 import sys
 sys.path.append('fnc')
 from SysModel import Simulator, PID
+from Virtualsimulater import VirtualSimulator
 from Classes import ClosedLoopData, LMPCprediction, TLMPCprediction,ClosedLoopDataLMPC
 from PathFollowingLTVMPC import PathFollowingLTV_MPC
 from PathFollowingLTIMPC import PathFollowingLTI_MPC
 from Track import Map, unityTestChangeOfCoordinates
 from LMPC import ControllerLMPC
 from TransferLMPC import ControllerTLMPC
+from NewLMPC import NewControllerLMPC
 from Utilities import Regression
 from plot import plotTrajectory, plotClosedLoopLMPC, animation_xy, animation_states, saveGif_xyResults, Save_statesAnimation,TLMPC_xyResults
 import numpy as np
 import matplotlib.pyplot as plt
 import pdb
 import  pickle
-from testsysmodel import testSimulator
+
 
 # ======================================================================================================================
 # ============================ Choose which controller to run ==========================================================
@@ -49,7 +51,8 @@ RunPID     = 0; plotFlag       = 0
 RunMPC     = 0; plotFlagMPC    = 0
 RunMPC_tv  = 0; plotFlagMPC_tv = 0
 RunLMPC    = 0; plotFlagLMPC   = 0; animation_xyFlag = 0; animation_stateFlag = 0
-RunTLMPC    = 1; plotFlagTLMPC   = 1
+RunTLMPC    = 0   ; plotFlagTLMPC   = 0 #对LMPC经验进行迁移
+RunNLMPC    = 1 ; plotFlagNLMPC    =0  # new LMPC 控制
 # ======================================================================================================================
 # ============================ Initialize parameters for path following ================================================
 # ======================================================================================================================
@@ -94,27 +97,28 @@ inputConstr = np.array([[0.5, 0.5],                     # Min Steering and Max S
 LMPCSimulator = Simulator(map, 1, 1)
 
 # ======================================================================================================================
-# ==================================== Initialize parameters for TLMPC ==================================================
+# ===============================================开始经验迁移 ==================================================
 # ======================================================================================================================
+newmap=map
 TimeTLMPC   = 400   # Simulation time
-TLaps       = 1           # Total LMPC laps
+TLaps       = 5           # 迁移5圈
 # Safe Set Parameters
-TLMPC_Solver = "CVX"           # Can pick CVX for cvxopt or OSQP. For OSQP uncomment line 14 in LMPC.py
-numTSS_it = 2                  # Number of trajectories used at each iteration to build the safe set
-numTSS_Points = 40         # Number of points to select from each trajectory to build the safe set
 numSR_Points=30   #迁移学习中相似路径的片段点个数
-# Tuning Parameters
-TQslack  =  2 * 5 * np.diag([10, 1, 1, 1, 10, 1])            # Cost on the slack variable for the terminal constraint
-TQlane   =  1 * np.array([0, 10])                        # Quadratic and linear slack lane cost
-Q_TLMPC  =  0 * np.diag([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # State cost x = [vx, vy, wz, epsi, s, ey]
-R_TLMPC  =  0 * np.diag([1.0, 1.0])                      # Input cost u = [delta, a]
-dR_TLMPC = 10 * np.array([1.0, 10.0])                    # Input rate cost u
-#输入约束的边界值
-inputConstr = np.array([[0.5, 0.5],                     # Min Steering and Max Steering
-                        [1.0, 1.0]])                    # Min Acceleration and Max Acceleration
 
 # Initialize LMPC simulator
-TLMPCSimulator = Simulator(map, 1, 0,1)
+TLMPCSimulator = VirtualSimulator(newmap, 1, 1)
+# ======================================================================================================================
+# ===============================================迁移完开始跑 ==================================================
+# ======================================================================================================================
+TimeNLMPC   = 400              # Simulation time
+NLaps       = 5+1           # Total LMPC laps
+
+# Safe Set Parameters
+NLMPC_Solver = "CVX"           # Can pick CVX for cvxopt or OSQP. For OSQP uncomment line 14 in LMPC.py
+numSS_it = 2                  # Number of trajectories used at each iteration to build the safe set
+numSS_Points = 40         # Number of points to select from each trajectory to build the safe set
+
+NLMPCSimulator = Simulator(newmap, 1, 0,1)
 # ======================================================================================================================
 # ======================================= PID path following ===========================================================
 # ======================================================================================================================
@@ -172,7 +176,7 @@ else:
     file_data.close()
 print "===== TV-MPC terminated"
 # ======================================================================================================================
-# ==============================  LMPC w\ LOCAL LINEAR REGRESSION ======================================================
+# ===========================================原 LMPC 控制 ======================================================
 # ======================================================================================================================
 print "Starting LMPC"
 ClosedLoopLMPC = ClosedLoopDataLMPC(dt, TimeLMPC, v0,Laps)
@@ -216,49 +220,78 @@ else:
 
 print "===== LMPC terminated"
 # ======================================================================================================================
-# ==========================================The Transfer of LMPC  ======================================================
+# ==========================================    LMPC 的经验迁移   ======================================================
 # ======================================================================================================================
 #开始迁移学习
 print "Starting TLMPC"
 ClosedLoopTLMPC = ClosedLoopData(dt, TimeTLMPC, v0)
-TLMPCOpenLoopData = TLMPCprediction(N, n, d, TimeTLMPC, numTSS_Points, TLaps,numSR_Points) #生成所需大小的初始零矩阵
-#正常仿真
-#TLMPCSimulator = Simulator(map, 1, 0,1)
-#测试
-TLMPCSimulator = testSimulator(map, 1, 0,1)
+TLMPCOpenLoopData = TLMPCprediction(N, n, d, TimeTLMPC,numSR_Points) #生成所需大小的初始零矩阵
+#迁移经验
+TLMPCSimulator = VirtualSimulator(newmap, 1,1)
 
-TLMPController = ControllerTLMPC(numSS_Points, numSR_Points, numSS_it, N, Qslack, Qlane, Q_LMPC, R_LMPC, dR_LMPC, dt, map, Laps, TimeLMPC, LMPC_Solver, inputConstr)
-#TLMPController.addTrajectory(ClosedLoopDataPID)
-#TLMPController.addTrajectory(ClosedLoopDataLTV_MPC)
+TLMPController = ControllerTLMPC(numSS_Points, numSR_Points, N,dt, newmap, Laps,TLaps, TimeLMPC)
 TLMPController.addTrajectory(ClosedLoopLMPC,LMPController,Laps)
 x0           = np.zeros((1,n))
 x0_glob      = np.zeros((1,n))
 x0[0,:]      = ClosedLoopTLMPC.x[0,:]
 x0_glob[0,:] = ClosedLoopTLMPC.x_glob[0,:]
-
 if RunTLMPC == 1:
     ClosedLoopTLMPC.updateInitialConditions(x0, x0_glob)
-    TLMPCSimulator.Sim(ClosedLoopTLMPC, TLMPController, 0,TLMPCOpenLoopData) #闭环数据，控制器，开环预测值和ss集
-   # LMPController.addTrajectory(ClosedLoopLMPC)
+    TLMPCSimulator.Sim(ClosedLoopTLMPC, TLMPController, TLMPCOpenLoopData,TLaps) #闭环数据，控制器，开环预测值和ss集
     file_data = open(sys.path[0]+'/data/TLMPController.obj', 'wb')
     pickle.dump(ClosedLoopTLMPC, file_data)
     pickle.dump(TLMPController, file_data)
     pickle.dump(TLMPCOpenLoopData, file_data)
     file_data.close()
-#else:
- #   file_data = open(sys.path[0]+'/data/TLMPController.obj', 'rb')
- #   ClosedLoopTLMPC = pickle.load(file_data)
- #   TLMPController  = pickle.load(file_data)
-#    TLMPCOpenLoopData  = pickle.load(file_data)
-  #  file_data.close()
-
+else:
+    file_data = open(sys.path[0]+'/data/TLMPController.obj', 'rb')
+    ClosedLoopTLMPC = pickle.load(file_data)
+    TLMPController  = pickle.load(file_data)
+    TLMPCOpenLoopData  = pickle.load(file_data)
+    file_data.close()
 print "===== TLMPC terminated"
+# ======================================================================================================================
+# ==========================================开始 LMPC 在新的赛道上跑 ======================================================
+# ======================================================================================================================
+print "开始在新的赛道上跑"
+newClosedLoopLMPC = ClosedLoopDataLMPC(dt, TimeLMPC, v0,NLaps)
+newLMPCOpenLoopData = LMPCprediction(N, n, d, TimeLMPC, numSS_Points, NLaps) #生成所需大小的初始零矩阵
+newLMPCSimulator = Simulator(newmap, 1, 0,1)
+
+newLMPController = NewControllerLMPC(numSS_Points, numSS_it, N, Qslack, Qlane, Q_LMPC, R_LMPC, dR_LMPC, dt, map, Laps, TLaps,TimeLMPC, LMPC_Solver, inputConstr)
+newLMPController.firstTrajectory(TLMPController)
+
+x0           = np.zeros((1,n))
+x0_glob      = np.zeros((1,n))
+x0[0,:]      = newClosedLoopLMPC.x[0,:]
+#x0_glob[0,:] = newClosedLoopLMPC.x_glob[0,:]
+#x0[0,:]      = TLMPController.transSS[0,:]
+#x0_glob[0,:] = TLMPController.x_glob[0,:]
+
+if RunNLMPC== 1:
+    newClosedLoopLMPC.updateInitialConditions(x0, x0_glob)
+    newLMPCSimulator.Sim(newClosedLoopLMPC, newLMPController, newLMPCOpenLoopData)
+    file_data = open(sys.path[0]+'/data/NLMPController.obj', 'wb')
+    pickle.dump(newClosedLoopLMPC, file_data)
+    pickle.dump(newLMPController, file_data)
+    pickle.dump(newLMPCOpenLoopData, file_data)
+    file_data.close()
+#else:
+ #   file_data = open(sys.path[0]+'/data/NLMPController.obj', 'rb')
+   # ClosedLoopLMPC = pickle.load(file_data)
+  #  LMPController  = pickle.load(file_data)
+  #  LMPCOpenLoopData  = pickle.load(file_data)
+   # file_data.close()
+
+print "===== 在新的赛道上跑完一圈"
+
+
 
 # ======================================================================================================================
 # ========================================= PLOT TRACK =================================================================
 # ======================================================================================================================
 #for i in range(0, LMPController.it):
-#    print "Lap time at iteration ", i, " is ", LMPController.Qfun[0, i]*dt, "s"
+  #  print "Lap time at iteration ", i, " is ", LMPController.Qfun[0, i]*dt, "s"
 
 
 
@@ -287,7 +320,7 @@ if animation_stateFlag == 1:
 # unityTestChangeOfCoordinates(map, ClosedLoopDataLTI_MPC)
 # unityTestChangeOfCoordinates(map, ClosedLoopLMPC)
 if plotFlagTLMPC==1:
-    TLMPC_xyResults(map,TLMPCOpenLoopData,TLMPController,0)
+    TLMPC_xyResults(newmap,TLMPCOpenLoopData,TLMPController)
     plt.show()
 
 

@@ -29,7 +29,7 @@ def Regression(x, u, lamb):
 def Curvature(s, PointAndTangent):
     """curvature computation
     s: curvilinear abscissa at which the curvature has to be evaluated
-    PointAndTangent: points and tangent vectors defining the map (these quantities are initialized in the map object)
+    PointAndTangent: points and tangent vectors defining the map                                                                                          (these quantities are initialized in the map object)
     """
     TrackLength = PointAndTangent[-1,3]+PointAndTangent[-1,4] #pointandtangent[ ,3]和[ ,4]分别表示cumulative s 和 segment length
 
