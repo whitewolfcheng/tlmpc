@@ -58,7 +58,7 @@ class NewControllerLMPC():
         self.map = map
         self.Solver = Solver
         self.LapTime = 0
-        self.itUsedSysID = 1
+        self.itUsedSysID = 2
         self.inputConstraints = inputConstraints
 
         self.OldInput = np.zeros((1, 2))
@@ -119,6 +119,7 @@ class NewControllerLMPC():
             self.zVector[4] = np.max([self.zVector[4] - map.TrackLength, 0])
             self.LinPoints[4, -1] = self.LinPoints[4, -1] - map.TrackLength
 
+
         # argsort函数返回的是数组值从小到大的索引值， Qfun为ss中从某点开始的代价函数
     #    sortedLapTime = np.argsort(self.Qfun[0, 0:it])
 
@@ -137,7 +138,10 @@ class NewControllerLMPC():
             SS_PointSelected[:,:,jj], uSS_PointSelected[:,:,jj], Qfun_Selected[:,jj], MinX0diff[jj] = _SelectPoints(self, jj, self.zVector,
                                                                                numSS_Points / self.numSS_it + 1) #Mindiff 是选中点与当前点的距离
             # print(SS_PointSelected.shape)
+        #    print 'MinX0diff' ,MinX0diff[jj]
         sortedLapTime=np.argsort(MinX0diff)  #根据和当前点的距离对挑选的SS集进行从近到远的排序
+     #   with open('Mindiff.csv', 'ab') as f:
+  #          np.savetxt(f, MinX0diff[sortedLapTime[0:2]], fmt='%f')
         for jjs in sortedLapTime[0:self.numSS_it]: #根据所需SS集段数的要求，挑选最近的SS集
             # 下一状态
         #    print '选中迭代圈数',jjs
@@ -170,6 +174,9 @@ class NewControllerLMPC():
 
         if self.Solver == "CVX":
             res_cons = qp(M, matrix(q), F, matrix(b), G, E * matrix(x0) + L)
+            #调查等式约束
+         #   np.savetxt('G.csv', G, delimiter=',', fmt='%f')
+         #   np.savetxt('E.csv', E * matrix(x0) + L, delimiter=',', fmt='%f')
             if res_cons['status'] == 'optimal':
                 feasible = 1
             else:
@@ -191,10 +198,14 @@ class NewControllerLMPC():
 
         # Extract solution and set linerizations points
         xPred, uPred, lambd, slack = _LMPC_GetPred(Solution, n, d, N, np)
-
+  #      with open('zhongduan.csv', 'ab') as f:
+ #           np.savetxt(f, np.dot(SS_PointSelectedTot, lambd), fmt='%f')
+  #      with open('zVector.csv', 'ab') as f:
+   #         np.savetxt(f, self.zVector, fmt='%f')
+    #    with open('diffzhongduan.csv', 'ab') as f:
+    #        np.savetxt(f, np.dot(SS_PointSelectedTot, lambd)-self.zVector, fmt='%f')
         self.zVector = np.dot(Succ_SS_PointSelectedTot, lambd)
         self.uVector = np.dot(Succ_uSS_PointSelectedTot, lambd)
-
         self.xPred = xPred.T
       #  print self.zVector,self.uVector
         if self.N == 1:
@@ -205,6 +216,8 @@ class NewControllerLMPC():
             self.LinInput = np.vstack((uPred.T[1:, :], self.uVector))
 
         self.LinPoints = np.vstack((xPred.T[1:, :], self.zVector))
+        print '状态',self.LinPoints[:,4]
+   #     print '输入',self.LinInput
 
         self.OldInput = uPred.T[0, :]
 
@@ -229,6 +242,7 @@ class NewControllerLMPC():
         if self.it == 0:
             self.LinPoints = self.SS[1:self.N + 2, :, 0]
             self.LinInput = self.uSS[1:self.N + 1, :, 0]
+           # print self.LinPoints[:,4]
       #      self.zVector =self.SS[self.N,:,0]
 
 
@@ -442,39 +456,52 @@ def _SelectPoints(LMPC, it, x0, numSS_Points):
     diff = x - x0Vec
     norm = la.norm(diff, 1, axis=1)
     MinNorm = np.argmin(norm)
-    Mindiff=norm[MinNorm]
+#    Mindiff=norm[MinNorm]
+    Mindiff=la.norm(x[MinNorm,:]-x0,1)
     #找到离当前终端约束点最近的点在哪个迁移片段内
     paradiff=np.squeeze(MinNorm-tSSparaTime[:,it])
-    indexpara1=np.where(paradiff<0)[0][0]
+    indexpara1=np.where(paradiff<0)[0][0]  #右边的点
     if indexpara1==0:
         para1=0
     else :
-        para1=int(tSSparaTime[indexpara1-1,it])
-    para2=int(tSSparaTime[indexpara1,it]-1)
-
-    if MinNorm==para2: #准备跳车
+        para1=int(tSSparaTime[indexpara1-1,it]) #左边界
+    para2=int(tSSparaTime[indexpara1,it]-1)   #右边界
+    # 如果当前点也在下一段轨迹中，并且还超了三个点,提前跳到下一路段
+    if para2+1+5<x.shape[0]:
+      if x[para2+1+5,4]<=x0[4] :
+        para1=para2+1
+        para2=int(tSSparaTime[indexpara1+1,it]-1)
+        xlocal=SS[para1:para2+1 , :, it]
+        oneVeclocal=np.ones((para2-para1+1,1))
+        x0Vec=(np.dot(np.array([x0]).T, oneVeclocal.T)).T
+        difflocal=xlocal-x0Vec
+        normlocal=la.norm(difflocal,1,axis=1)
+        MinNorm=np.argmin(normlocal)+para1
+        Mindiff = la.norm(x[MinNorm, :] - x0, 1)
+ #   if MinNorm==para2: #准备跳车
      #   print "开始跳车"
-        MinNorm = MinNorm+1  #往前跨一步
-        if MinNorm>=x.shape[0] and it<LMPC.TLaps-1:
+  #      MinNorm = MinNorm+1  #往前跨一步
+    #如果最临近点在该圈的最后一个点
+    if MinNorm>=x.shape[0] and it<LMPC.TLaps-1:
             MinNorm=0
             x = SS[0:TimeSS[it+1], :, it+1]
             u = uSS[0:TimeSS[it+1], :, it+1]
             x[:,4]=x[:,4]+map.TrackLength
             para1=0
             para2 = int(tSSparaTime[0, it + 1]-1)
-            Mindiff=la.norm(x[0,:]-x0, 1)
-        if MinNorm >= x.shape[0] and it == LMPC.TLaps - 1:
+            Mindiff=la.norm(x[0,:]-x0,1)
+    if MinNorm >= x.shape[0] and it == LMPC.TLaps - 1:
             MinNorm = 0
             x = SS[0:TimeSS[it], :, it ]
             u = uSS[0:TimeSS[it], :, it ]
             x[:, 4] = x[:, 4] + map.TrackLength
             para1 = 0
             para2 = int(tSSparaTime[0, it] - 1)
-            Mindiff = la.norm(x[0, :] - x0, 1)*10
-        else:
-            para1=int(tSSparaTime[indexpara1,it] )#下一段路径的左边界
-            para2 =int( tSSparaTime[indexpara1 + 1, it] - 1 )#下一段路径的右边界
-            Mindiff=norm[MinNorm]
+            Mindiff = la.norm(x[0, :] - x0,1)
+ #       else:
+  #          para1=int(tSSparaTime[indexpara1,it] )#下一段路径的左边界
+   #         para2 =int( tSSparaTime[indexpara1 + 1, it] - 1 )#下一段路径的右边界
+  #          Mindiff=norm[MinNorm]
    # print Mindiff
 
 
@@ -502,7 +529,7 @@ def _SelectPoints(LMPC, it, x0, numSS_Points):
     # print(SS_Points.shape)
     SSu_Points = u[indexSSandQfun, :].T
     #   print(SSu_Points.shape)
-    Sel_Qfun = x0[4]-x[indexSSandQfun, 4]  #用SS集中各点S值领先上一个终端约束点的程度代替Q值
+    Sel_Qfun = (x0[4]-x[indexSSandQfun, 4] ) *10#用SS集中各点S值领先上一个终端约束点的程度代替Q值
   #  print Sel_Qfun,x0[4],x[indexSSandQfun, 4],MinNorm,indexSSandQfun
   #  print Sel_Qfun[Sel_Qfun>0]
 
@@ -652,6 +679,8 @@ def  _LMPC_EstimateABC(ControllerLMPC, sortedLapTime):
     for i in range(0, N):
         # 最后传入tSSparaTime参数，用来删除每一小段的最后一个点，避免最后一个点没有下一个点
     #    print 'n=%d'%(i)
+
+
         Ai, Bi, Ci, indexSelected = RegressionAndLinearization(LinPoints, LinInput, usedIt, SS, uSS, TimeSS,
                                                                MaxNumPoint, qp, n, d, matrix, PointAndTangent, dt, i,tSSparaTime)
         Atv.append(Ai)
@@ -696,6 +725,7 @@ def RegressionAndLinearization(LinPoints, LinInput, usedIt, SS, uSS, LapCounter,
     for ii in usedIt:
         indexSelected_i, K_i = ComputeIndex(h, SS, uSS, LapCounter, ii, xLin, stateFeatures, scaling, MaxNumPoint,
                                             ConsiderInput, tSSparaTime[:,ii])
+
         indexSelected.append(indexSelected_i)
         K.append(K_i)
 
@@ -867,20 +897,20 @@ def ComputeIndex(h, SS, uSS, LapCounter, it, x0, stateFeatures, scaling, MaxNumP
     # np.savetxt('SS.csv', SS[0:TimeSS[it], :, it], delimiter=',', fmt='%f')
     # 挑选出和当前状态最近的点
     diff = np.dot((DataMatrix - x0Vec), scaling)
-    # print 'x0Vec \n',x0Vec
     norm = la.norm(diff, 1, axis=1)
     indexdell=np.where(tSSparaTime.astype(int) - norm.shape>=0)[0][0]
     norm[tSSparaTime.astype(int)[0:indexdell]-1]=1000 #将每小段最后一个点和当前点的距离设置为特别大，将其排除
     indexTot = np.squeeze(np.where(norm < h))
-#    if any(indexTot)==False:
-   #     print 'indexTot',indexTot
+  #  if any(indexTot)==False:
+
     if indexTot.shape<10:
         print 'indexTot', indexTot.shape
 
 
+
     # print indexTot.shape, np.argmin(norm), norm, x0
     # 如果和当前点很近的点过多，只选取maxnumpoint个点
-    if (indexTot.shape[0] >= MaxNumPoint):
+    if (indexTot.shape >= MaxNumPoint):
         index = np.argsort(norm)[0:MaxNumPoint]
         # MinNorm = np.argmin(norm)
         # if MinNorm+MaxNumPoint >= indexTot.shape[0]:

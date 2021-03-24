@@ -22,7 +22,7 @@ def plotTrajectory(map, x, x_glob, u):
     plt.plot(Points2[:, 0], Points2[:, 1], '-b')
     plt.plot(x_glob[:, 4], x_glob[:, 5], '-r')
     #plt.savefig("C:/Users/EE506/Desktop/fig/lab/SS0_xy.svg") #svg格式能在Visio中处理并变成emf（visio）专用格式
-    plt.savefig("C:/Users/EE506/Desktop/fig/lab/SS0_xy.png")
+    plt.savefig("D:/study/python project/lmpc/src/lab/SS0_xy.png")
     plt.show()
     plt.figure('SS0_state')
     plt.subplot(711)
@@ -76,7 +76,7 @@ def plotClosedLoopLMPC(LMPController, map):
 
     for i in range(2, TotNumberIt):
         plt.plot(SS_glob[0:LapCounter[i], 4, i], SS_glob[0:LapCounter[i], 5, i], '-r')
-    plt.savefig("C:/Users/EE506/Desktop/fig/lab/lmpc_xy.png")
+    plt.savefig("D:/study/python project/lmpc/src/lab/lmpc_xy.png")
     plt.figure(2)
     plt.subplot(711)
     for i in range(2, TotNumberIt):
@@ -584,3 +584,76 @@ def TLMPC_xyResults(map, TLMPCOpenLoopData, TLMPController):
   #  plt.plot(chazhiSSpoints_x, chazhiSSpoints_y, '-ob', label="chazhi")
     plt.legend(loc='best')
 
+def newsaveGif_xyResults(map, LMPCOpenLoopData, LMPController, it,LMPCloseloopData):
+
+    SS_glob = LMPController.SS_glob
+    LapCounter = LMPController.LapCounter
+    x_glob=LMPCloseloopData.x_glob
+    SS = LMPController.SS
+    uSS = LMPController.uSS
+
+    Points = int(np.floor(10 * (map.PointAndTangent[-1, 3] + map.PointAndTangent[-1, 4])))  #道路的最后一个点扩大十倍并向下取整：如将3.21变成32
+    Points1 = np.zeros((Points, 2))
+    Points2 = np.zeros((Points, 2))
+    Points0 = np.zeros((Points, 2))
+
+    for i in range(0, int(Points)):
+        Points1[i, :] = map.getGlobalPosition(i * 0.1, map.halfWidth)  #绘制道路的边界线
+        Points2[i, :] = map.getGlobalPosition(i * 0.1, -map.halfWidth) #绘制道路的另一条边界线
+        Points0[i, :] = map.getGlobalPosition(i * 0.1, 0)   #绘制道路的中心线
+
+    fig = plt.figure(101)
+    # plt.ylim((-5, 1.5))
+    fig.set_tight_layout(True)  #自动紧凑布局
+    plt.plot(map.PointAndTangent[:, 0], map.PointAndTangent[:, 1], 'o')
+    #蓝色的路宽两条线及路中间的虚线
+    plt.plot(Points0[:, 0], Points0[:, 1], '--')
+    plt.plot(Points1[:, 0], Points1[:, 1], '-b')
+    plt.plot(Points2[:, 0], Points2[:, 1], '-b')
+    #黑色的闭环轨迹
+    plt.plot(x_glob[:, 4], x_glob[:, 5], '-ok', label="Closed-loop trajectory", markersize=1,zorder=-1)
+    ax = plt.axes()
+
+    SSpoints_x = []; SSpoints_y = []
+    xPred = []; yPred = []
+    SSpoints, = ax.plot(SSpoints_x, SSpoints_y, 'og', label="SS",zorder=0)   #ss集绘制
+    line, = ax.plot(xPred, yPred, '-or', label="Predicted Trajectory",zorder=1)  #预测的状态变量绘制
+
+    v = np.array([[ 1.,  1.],
+                  [ 1., -1.],
+                  [-1., -1.],
+                  [-1.,  1.]])
+
+    plt.legend(mode="expand", ncol=3)
+    # plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
+    #             mode="expand", borderaxespad=0, ncol=3)
+
+    N = LMPController.N
+    numSS_Points = LMPController.numSS_Points
+
+
+    def update(i):
+
+
+        xPred = np.zeros((N + 1, 1)); yPred = np.zeros((N + 1, 1))
+        SSpoints_x = np.zeros((numSS_Points, 1)); SSpoints_y = np.zeros((numSS_Points, 1))
+        #预测的状态变量
+        for j in range(0, N + 1):
+
+             xPred[j, 0], yPred[j, 0] = map.getGlobalPosition(LMPCOpenLoopData.PredictedStates[j, 4, i, it],
+                                                             LMPCOpenLoopData.PredictedStates[j, 5, i, it])
+
+
+        #ss集
+        for j in range(0, numSS_Points):
+
+                SSpoints_x[j, 0], SSpoints_y[j, 0] = map.getGlobalPosition(LMPCOpenLoopData.SSused[4, j, i, it],
+                                                                       LMPCOpenLoopData.SSused[5, j, i, it])
+        SSpoints.set_data(SSpoints_x, SSpoints_y)
+
+        line.set_data(xPred, yPred)
+
+
+    anim = FuncAnimation(fig, update, frames=np.arange(0, 200), interval=100)
+
+    anim.save('ClosedLoop.mp4', dpi=80, writer='imagemagick')

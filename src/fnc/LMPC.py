@@ -115,7 +115,6 @@ class ControllerLMPC():
         for jj in sortedLapTime[0:self.numSS_it]:
            # print(jj)
             SS_PointSelected, uSS_PointSelected, Qfun_Selected = _SelectPoints(self, jj, self.zVector, numSS_Points / self.numSS_it + 1)
-            #print(SS_PointSelected.shape)
             #下一状态
             Succ_SS_PointSelectedTot =  np.append(Succ_SS_PointSelectedTot, SS_PointSelected[:,1:], axis=1)
             Succ_uSS_PointSelectedTot =  np.append(Succ_uSS_PointSelectedTot, uSS_PointSelected[:,1:], axis=1)
@@ -178,7 +177,6 @@ class ControllerLMPC():
             self.LinInput = np.vstack((uPred.T[1:, :], self.uVector))
 
         self.LinPoints = np.vstack((xPred.T[1:,:], self.zVector))  #竖着堆叠
-
         self.OldInput = uPred.T[0,:]
                                             
     def addTrajectory(self, ClosedLoopData):
@@ -224,6 +222,13 @@ class ControllerLMPC():
             self.Qfun[Counter, self.it - 1] = self.Qfun[Counter, self.it - 1] - 1
 
         self.TimeSS[self.it - 1] = self.TimeSS[self.it - 1] + 1
+        if self.it==2:
+            self.SS[Counter, :, self.it - 2] = x + np.array([0, 0, 0, 0, self.map.TrackLength, 0])
+            self.uSS[Counter, :, self.it - 2] = u
+            self.SS_glob[Counter, :, self.it - 2] = xglob
+            if self.Qfun[Counter, self.it - 2] == 0:
+                self.Qfun[Counter, self.it - 2] = self.Qfun[Counter, self.it - 2] - 1
+            self.TimeSS[self.it - 2] = self.TimeSS[self.it - 2] + 1
 
     def update(self, SS, uSS, Qfun, TimeSS, it, LinPoints, LinInput):
         """update controller parameters. This function is useful to transfer information among LMPC controller
@@ -467,7 +472,6 @@ def _SelectPoints(LMPC, it, x0, numSS_Points):
     u = uSS[0:(TimeSS[it]-1),:, it]
    # print "测试"
    # print x
-   # print x.shape
     x_glob = SS_glob[:, :, it]
     oneVec = np.ones((x.shape[0], 1))
     x0Vec = (np.dot(np.array([x0]).T, oneVec.T)).T #每行是一个x0，共x.shape[0]行
@@ -857,7 +861,7 @@ def ComputeIndex(h, SS, uSS, LapCounter, it, x0, stateFeatures, scaling, MaxNumP
     # print 'x0Vec \n',x0Vec
     norm = la.norm(diff, 1, axis=1)
     indexTot =  np.squeeze(np.where(norm < h))
-    # print indexTot.shape, np.argmin(norm), norm, x0
+  # print indexTot.shape
     #如果和当前点很近的点过多，只选取maxnumpoint个点
     if (indexTot.shape[0] >= MaxNumPoint):
         index = np.argsort(norm)[0:MaxNumPoint]

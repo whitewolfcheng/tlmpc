@@ -8,7 +8,7 @@ class Map():
     Attributes:
         getGlobalPosition: convert position from (s, ey) to (X,Y)
     """
-    def __init__(self, halfWidth):
+    def __init__(self, halfWidth,change=0):
         """Initialization
         halfWidth: track halfWidth
         Modify the vector spec to change the geometry of the track 调整spec向量改变几何路径
@@ -40,15 +40,12 @@ class Map():
                          [lengthCurve / np.pi * 2, 0],
                          [lengthCurve / 2, lengthCurve / np.pi]])
         #spec[i,o]表示路径的长度，spec[i,1]表示曲率半径
-
-
-        # spec = np.array([[1.0, 0],
-        #                  [4.5, -4.5 / np.pi],
-        #                  # Note s = 1 * np.pi / 2 and r = -1 ---> Angle spanned = np.pi / 2
-        #                  [2.0, 0],
-        #                  [4.5, -4.5 / np.pi],
-        #                  [1.0, 0]])
-
+        if change==1:
+          #  spec = np.array([[1.0, 0], [lengthCurve, lengthCurve / np.pi],[lengthCurve / 2, -lengthCurve / np.pi],[lengthCurve, lengthCurve / np.pi],[lengthCurve / np.pi * 2, 0], [lengthCurve / 2, lengthCurve / np.pi]])#原轨迹
+            #spec = np.array([ [1.0,0],[4.5, 4.5 / np.pi], [2.0,0],[4.5, 4.5 / np.pi],[0.5,0]])#椭圆
+          #  spec = np.array([[1.0, 0],[lengthCurve, lengthCurve / np.pi],[lengthCurve / 2, -lengthCurve / np.pi],[lengthCurve, lengthCurve / np.pi],[lengthCurve / 2, -lengthCurve / np.pi],[lengthCurve, lengthCurve / np.pi],[lengthCurve / np.pi, 0]]) #凸字形
+            #spec = np.array([ [4.5, 4.5 / np.pi],[4.5, 4.5 / np.pi]])#圆
+            spec=np.array([[9/np.pi,0],[4.5/2,4.5/np.pi],[4.5/np.pi,0],[4.5,4.5/np.pi],[4.5/2,-4.5/np.pi],[2,0],[4.5/2,-4.5/np.pi],[4.5,4.5/np.pi],[4.5/np.pi,0],[4.5/2,4.5/np.pi],[1.0,0]])#凹字形
         # Now given the above segments we compute the (x, y) points of the track and the angle of the tangent vector (psi) at
         # these points. For each segment we compute the (x, y, psi) coordinate at the last point of the segment. Furthermore,
         # we compute also the cumulative s at the starting point of the segment at signed curvature
@@ -139,19 +136,20 @@ class Map():
         self.PointAndTangent = PointAndTangent
         self.TrackLength = PointAndTangent[-1, 3] + PointAndTangent[-1, 4]
 
+
     def getGlobalPosition(self, s, ey):
         """coordinate transformation from curvilinear reference frame (e, ey) to inertial reference frame (X, Y)
         (s, ey): position in the curvilinear reference frame
         """
 
         # wrap s along the track
-        while (s > self.TrackLength):
+        if s < 0:
+            s = s + self.TrackLength
+        while (s >= self.TrackLength):
             s = s - self.TrackLength
-        if s<0:
-            s=s+self.TrackLength
+
         # Compute the segment in which system is evolving
         PointAndTangent = self.PointAndTangent
-
         index = np.all([[s >= PointAndTangent[:, 3]], [s < PointAndTangent[:, 3] + PointAndTangent[:, 4]]], axis=0)
 
         i = int(np.where(np.squeeze(index))[0])

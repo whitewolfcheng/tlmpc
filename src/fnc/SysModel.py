@@ -33,12 +33,15 @@ class Simulator():
         u      = ClosedLoopData.u
 
         SimulationTime = 0
+
         for i in range(0, int(ClosedLoopData.Points)):  #在[0,points)中遍历， self.Points = int(Time / dt)，表示仿真中的点个数
       #  for i in range(0, 30):
+
             Controller.solve(x[i, :])                   #x中第一个量为预测个数，第二个量为6个状态变量
             u[i, :] = Controller.uPred[0,:]
            # print '小车输入'
           #  print u[i,:]
+
 
             if LMPCprediction != 0:
                 Controller.LapTime = i
@@ -50,14 +53,22 @@ class Simulator():
                 Controller.LapTime = i
                 TLMPCprediction.PredictedStates[:,:,i, Controller.it]   = Controller.xPred
                 TLMPCprediction.PredictedInputs[:, :, i, Controller.it] = Controller.uPred
-                TLMPCprediction.TSRused[:, :, i, Controller.it]         = Controller.TSR_PointSelectedTot
-                TLMPCprediction.TSSused[:, :, i, Controller.it]          = Controller.TSS_PointSelectedTot
+                TLMPCprediction.SSused[:, :, i, Controller.it]          = Controller.SS_PointSelectedTot
                 TLMPCprediction.Pfunused[:, i, Controller.it]           = Controller.Pfun_SelectedTot
           #  print '小车状态更新'
-         #   print x[i, :]
+
+
+
             x[i + 1, :], x_glob[i + 1, :] = _DynModel(x[i, :], x_glob[i, :], u[i, :], np, ClosedLoopData.dt, self.map.PointAndTangent)
-            if x[i+1,5]>=self.map.halfWidth:
-                print '超过边界',x[i+1,5],self.map.halfWidth
+
+        #    with open('xPred.csv', 'ab') as f:
+         #        np.savetxt(f, Controller.xPred[0, :], fmt='%f')
+         #   with open('xnext.csv', 'ab') as f:
+         #       np.savetxt(f, x[i + 1, :], fmt='%f')
+
+
+        #    if x[i+1,5]>=self.map.halfWidth:
+         #       print 'Lateral distance',x[i+1,5], 'Road boundary',self.map.halfWidth,'error',x[i+1,5]-self.map.halfWidth
            # print '当前位置',x[i + 1, 4],'目标位置',self.map.TrackLength
             SimulationTime = i + 1
 
@@ -80,12 +91,12 @@ class Simulator():
    #             Controller.addPoint(x[i, :], u[i, :],x_glob[i,:])
 
             if (self.laps == 1) and (int(np.floor(x[i+1, 4] / (self.map.TrackLength))))>0:
-                print "Simulation terminated: Lap completed"
-                print "消耗时间：", i * 0.1, "s"
+             #   print "Simulation terminated: Lap completed
+                print "Lap time at iteration ", Controller.it, " is ", (i+1) * 0.1, "s"
                 break
 
         ClosedLoopData.SimTime = SimulationTime
-        print "Number of laps completed: ", int(np.floor(x[-1, 4] / (self.map.TrackLength)))   #floor为向下取整，比如floor（2.1）=2.-1表示取x的最后一次预测
+      #  print "Number of laps completed: ", int(np.floor(x[-1, 4] / (self.map.TrackLength)))   #floor为向下取整，比如floor（2.1）=2.-1表示取x的最后一次预测
 
 class PID:
     """Create the PID controller used for path following at constant speed
@@ -202,7 +213,7 @@ def _DynModel(x, x_glob, u, np, dt, PointAndTangent):
         i = i+1
 
     # Noises 应该是人为加入随机噪声，使仿真结果更真实
-   # np.random.seed(0)
+ #   np.random.seed(0)
     noise_vx = np.max([-0.05, np.min([np.random.randn() * 0.01, 0.05])]) #噪声在-0.05到0.05之间随机产生
     noise_vy = np.max([-0.1, np.min([np.random.randn() * 0.01, 0.1])])
     noise_wz = np.max([-0.05, np.min([np.random.randn() * 0.005, 0.05])])

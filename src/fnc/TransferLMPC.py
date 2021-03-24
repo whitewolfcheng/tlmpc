@@ -43,7 +43,7 @@ class ControllerTLMPC():
         self.OldInput = np.zeros((1,2))
 #初始化
         # Initialize the following quantities to avoid dynamic allocation
-        NumPoints = int(TimeLMPC / dt) + 1
+        NumPoints = int(TimeLMPC / dt)*2 + 1
         self.LapCounter = 10000 * np.ones(Laps).astype(int)        # Time at which each j-th iteration is completed
         self.TimeSS     = 10000 * np.ones(Laps).astype(int)        # Time at which each j-th iteration is completed
         self.transSSTime  = 0*np.ones(NumPoints).astype(int)  #迁移后的SS集中的点个数(分段统计)
@@ -138,6 +138,7 @@ class ControllerTLMPC():
 
             #当前路径中心线的numSR_Points个点的对应s值及曲率
             nowarclen=arclens[ii:ii+numSR_Points,2:]  #s值
+
             if curb.shape[1]==0: #如果曲率是空集，则跳出循环
                 continue
 
@@ -146,14 +147,16 @@ class ControllerTLMPC():
         #    nowarclens=nowarclen+diffarclens
             #如果在最开始，zvector[4]很小，使得nowarclens中出现负数，则片段路径的需要以第一个点为基准点
          #   if np.any(nowarclens<0):
+            if nowarclen[-1,-1]==0:  #最后一行最后一列会出现长度是0的情况
+                break
             diffarclens = nowxs - nowarclen[0, :]
             nowarclens = nowarclen + diffarclens
-
             #利用弧长求曲率
             nowcur = np.empty((nowarclen.shape[0], nowarclen.shape[1]))
             for i in range(0,nowarclen.shape[0]):
                 for j in range(0, nowarclen.shape[1]):
                     if nowarclens[i,j]<0:
+                       # print nowarclens[i,j]+map.TrackLength
                         nowcur[i, j] = Curvature(nowarclens[i, j]+map.TrackLength, PointAndTangent)
                     else:
                         nowcur[i,j] = Curvature(nowarclens[i,j], PointAndTangent)
@@ -202,26 +205,43 @@ class ControllerTLMPC():
            #开始经验迁移，找到最优轨迹
         Sorigin=SS[MinII,4,MinJJ]  #相似道路中心线起点的s值
         Send = SS[MinII+numSR_Points-1, 4, MinJJ] #相似道路中心线终点的s值
-        MinNumPoints=100  #先整个大的初始值
+        MinNumPoints=10000 #先整个大的初始值
+        MinNumerror=10000
+        #上一段最优轨迹的最后一个点
+        if self.transSSTime[self.TransTime-1]==0:
+            BestzVector=self.zVector
+            BestzVectors =self.zVector
+        else :
+            BestzVector = self.transSS[self.transSSTime[self.TransTime - 1] - 1, :]
+            BestzVectors= self.transSS[self.transSSTime[self.TransTime-1]-11:self.transSSTime[self.TransTime-1], :]
+
         for J in range(SS.shape[2]-1,1,-1): #为了快点找到最优轨迹，倒着遍历
             totalpointS=SS[ : ,4, J ] #所有点的s值
             TrajectoriesIndex=np.argwhere((totalpointS<=Send) & (totalpointS>=Sorigin)) #s值在相似道路中心线范围内的轨迹点索引值
             selectedTrajecties = SS[TrajectoriesIndex[:,0], :, J]
-            if selectedTrajecties.shape[0]>numSR_Points: #待选轨迹不能比沿着路径中心线跑还要慢
-                continue
-            if selectedTrajecties.shape[0]>MinNumPoints: #待选轨迹比最优轨迹还慢的也扔了吧
+            difflastpoint = selectedTrajecties-BestzVector
+            normselectedtrajecties = la.norm(difflastpoint, 1, axis=1)
+            MinNormselectedtrajecties = np.argmin(normselectedtrajecties)
+            if MinNormselectedtrajecties-10<0:
+                similarLastpoint = selectedTrajecties[MinNormselectedtrajecties, :]
+            else:
+                similarLastpoint=selectedTrajecties[MinNormselectedtrajecties-10:MinNormselectedtrajecties+1,:]
+        #    if selectedTrajecties.shape[0]>numSR_Points: #待选轨迹不能比沿着路径中心线跑还要慢
+         #       continue
+        #    print la.norm(self.zVector[0:3]-selectedTrajecties[0,0:3],1)
+
+            if selectedTrajecties.shape[0]+la.norm(similarLastpoint-BestzVectors,1).sum()*10>MinNumerror: #待选轨迹比最优轨迹还慢的也扔了吧,同时保证速度变化慢
                 continue
             if selectedTrajecties.shape[0]<numSS_Points/2+1: #待选轨迹如果太快，会导致点数过少无法建立ss集，加1是为了划分当前SS集与下一步的SS集
                 continue
             #X1表示待迁移的轨迹点，X2表示虚拟道路中心线上的点
             TransX1=selectedTrajecties[:,:]
             TransX2_s=TransX1[:,4]
-            #X1处输入变量
-            TransU1=uSS[TrajectoriesIndex[:,0], :, J]
+
             #找到X2
-            TransX2_Vx = tck_Vx(TransX2_s)
-            TransX2_Vy = tck_Vy(TransX2_s)
-            TransX2_WZ = tck_wz(TransX2_s)
+         #   TransX2_Vx = tck_Vx(TransX2_s)
+         #   TransX2_Vy = tck_Vy(TransX2_s)
+          #  TransX2_WZ = tck_wz(TransX2_s)
             TransX2_epsi = tck_psi(TransX2_s)
             TransX2_arclens=tck_arclens(TransX2_s)
             TransX2_ey = tck_y(TransX2_s)
@@ -231,47 +251,49 @@ class ControllerTLMPC():
                 continue
             TransX1_s=TransX2_arclens+(TransX1[:,5]-TransX2_ey)*np.sin(TransX2_epsi) #先是按原来轨迹计算的s值你
             TransX1_epsi=TransX1[:,3]-TransX2_epsi
-            TransX1_WZ=TransX1[:,2]
-            TransX1_Vy=TransX1[:,1]*np.cos(TransX2_epsi)-TransX1[:, 0] * np.sin(TransX2_epsi)
-            TransX1_Vx = TransX1[:, 0] * np.cos(TransX2_epsi)+TransX1[:, 1] * np.sin(TransX2_epsi)
+            # X1处输入变量
+            TransU1 = uSS[TrajectoriesIndex[:, 0], :, J]
+       #     TransX1_WZ=TransX1[:,2]
+        #    TransX1_Vy=TransX1[:,1]*np.cos(TransX2_epsi)-TransX1[:, 0] * np.sin(TransX2_epsi)
+        #    TransX1_Vx = TransX1[:, 0] * np.cos(TransX2_epsi)+TransX1[:, 1] * np.sin(TransX2_epsi)
 
             MinNumPoints=selectedTrajecties.shape[0]
+            MinNumerror=MinNumPoints+la.norm(similarLastpoint-BestzVectors,1).sum()*10
             BestSS_PointSelect = np.empty((n, MinNumPoints))
-            BestSS_PointSelect[0, :] = TransX1_Vx
-            BestSS_PointSelect[1, :] = TransX1_Vy
-            BestSS_PointSelect[2, :] = TransX1_WZ
+            BestSS_PointSelect[0:3, :] = TransX1[:,0:3].T
             BestSS_PointSelect[3, :] = TransX1_epsi
             BestSS_PointSelect[4, :] = TransX1_s
             BestSS_PointSelect[5, :] = TransX1_ey
             #检验插值
             chazhi_PointSelect = np.empty((n, MinNumPoints))
-            chazhi_PointSelect[0, :] = TransX2_Vx
-            chazhi_PointSelect[1, :] = TransX2_Vy
-            chazhi_PointSelect[2, :] = TransX2_WZ
             chazhi_PointSelect[3, :] = TransX2_epsi
             chazhi_PointSelect[4, :] = TransX2_arclens
             chazhi_PointSelect[5, :] = TransX2_ey
             BestbeforePoint=TransX1 #迁移前的轨迹
+
         TransTime=self.TransTime #仿真的第几段路段，在Virtualsimulater程序中每次加1
         transSSTime=self.transSSTime[TransTime-1] #该路段内最优轨迹总共有几个点，self.transSSTime是统计所有transSSTime的集合
-        if transSSTime+MinNumPoints >= self.transSS.shape[0] :
-            self.transSS[transSSTime:, :] = BestSS_PointSelect[:, :self.transSS.shape[0]-transSSTime].T   #防止超过最大仿真时间
-            self.BestbeforePoint[transSSTime: , :] = BestbeforePoint[:, :self.transSS.shape[0]-transSSTime]
-            self.chazhi_PointSelect[transSSTime:, :] = chazhi_PointSelect[:, :self.transSS.shape[0]-transSSTime].T
-            self.overflag=1 #超出最大仿真时间了
-        self.transSS[transSSTime:transSSTime+MinNumPoints,:] =  BestSS_PointSelect[:,:].T  #将迁移后的最优轨迹加入新的ss集
+    #    if transSSTime+MinNumPoints >= self.transSS.shape[0] :
+    #        self.transSS[transSSTime:, :] = BestSS_PointSelect[:, :self.transSS.shape[0]-transSSTime].T   #防止超过最大仿真时间
+     #       self.BestbeforePoint[transSSTime: , :] = BestbeforePoint[:, :self.transSS.shape[0]-transSSTime]
+     #       self.chazhi_PointSelect[transSSTime:, :] = chazhi_PointSelect[:, :self.transSS.shape[0]-transSSTime].T
+     #       self.overflag=1 #超出最大仿真时间了
+
+        self.transSS[transSSTime:transSSTime+MinNumPoints,:] =  BestSS_PointSelect.T  #将迁移后的最优轨迹加入新的ss集
+
         self.transuSS[transSSTime:transSSTime+MinNumPoints,:]= TransU1
-        self.BestbeforePoint[transSSTime:transSSTime + MinNumPoints, :] = BestbeforePoint[:, :]
-        self.chazhi_PointSelect[transSSTime:transSSTime + MinNumPoints, :] = chazhi_PointSelect[:, :].T
+        self.BestbeforePoint[transSSTime:transSSTime + MinNumPoints, :] = BestbeforePoint
+        self.chazhi_PointSelect[transSSTime:transSSTime + MinNumPoints, :] = chazhi_PointSelect.T
         self.transSSTime[TransTime]=transSSTime + MinNumPoints#每一段结束后总共共多少个点(统计所有圈数)
         self.tSSparaTime[self.TranslapTime, self.overlap]=self.tSSparaTime[self.TranslapTime-1, self.overlap]+ MinNumPoints  #每一段结束后，当前圈数总共有多少个点
         self.TranslapTime=self.TranslapTime+1 #TranslapTime表示这一圈的第几小段轨迹
 
-        self.zVector=self.reallyroadPoint[-1,:]
+        self.zVector=self.reallyroadPoint[10,:]
         #快到达终点处时处理
         if (self.zVector[4]  > map.TrackLength ): #为了制造圈与圈之间的起始点差，到终点时让经验轨迹倒退几步
-            houtui=int(np.floor(self.reallyroadPoint.shape[0]/3))  #到终点时后退1/3
-            self.zVector = self.reallyroadPoint[-houtui, :]- map.TrackLength
+           # houtui=int(np.floor(self.reallyroadPoint.shape[0]/3))  #到终点时后退1/3
+           # self.zVector = self.reallyroadPoint[-houtui, :]- map.TrackLength
+            self.zVector[4]=self.zVector[4]-map.TrackLength
             self.tSSlapsTime[self.overlap] = self.transSSTime[TransTime]  # 第overlap圈的时候，总共有多少个点（所有圈数）
             self.TranslapTime = 0
          #   self.passway=1    #防止后退完回到终点再次被后退

@@ -15,7 +15,8 @@ class VirtualSimulator():
 
         SimulationTime = 0
 
-        for i in range(0, int(ClosedLoopData.Points)):  #在[0,points)中遍历， self.Points = int(Time / dt)，表示仿真中的点个数
+        for i in range(0, int(ClosedLoopData.Points)):  #在[0,points)中遍历， self.Points = int(Time / dt)，表示仿真中的点个数p0
+
             Controller.TransTime = i
             ceshistarttime=time.time()
             Controller.solve(x[i, :])                   #x中第一个量为预测个数，第二个量为6个状态变量

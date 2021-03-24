@@ -32,7 +32,6 @@ def Curvature(s, PointAndTangent):
     PointAndTangent: points and tangent vectors defining the map                                                                                          (these quantities are initialized in the map object)
     """
     TrackLength = PointAndTangent[-1,3]+PointAndTangent[-1,4] #pointandtangent[ ,3]和[ ,4]分别表示cumulative s 和 segment length
-
     # In case on a lap after the first one
     while (s > TrackLength):
         s = s - TrackLength
@@ -41,6 +40,7 @@ def Curvature(s, PointAndTangent):
     # Compute the segment in which system is evolving
     #np.all进行交运算，找到s在哪个片段中
     index = np.all([[s >= PointAndTangent[:, 3]], [s < PointAndTangent[:, 3] + PointAndTangent[:, 4]]], axis=0)
+
    # print index
     #找到该片段的位置
     i = int(np.where(np.squeeze(index))[0])
